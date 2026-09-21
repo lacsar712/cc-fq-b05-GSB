@@ -11,22 +11,29 @@
       状态：{{ statusLabel(job.status) }}
       · 样例：{{ job.sample_name }}
       · 提交人：{{ job.created_by }}
-      <div v-if="job.error_message" class="q-mt-sm">失败原因：{{ job.error_message }}</div>
+      <div v-if="job.error_message" class="q-mt-sm">
+        {{ job.status === 'rejected' ? '拒绝原因' : '失败原因' }}：{{ job.error_message }}
+      </div>
     </q-banner>
 
-    <div class="text-subtitle1 q-mb-sm">Actor 阶段时间线</div>
-    <q-timeline color="primary" class="q-mb-lg">
-      <q-timeline-entry
-        v-for="s in stages"
-        :key="s.id"
-        :title="s.actor_name"
-        :subtitle="stageSubtitle(s)"
-        :color="stageColor(s.status)"
-        :icon="stageIcon(s.status)"
-      >
-        <div>{{ s.message || '—' }}</div>
-      </q-timeline-entry>
-    </q-timeline>
+    <template v-if="stages.length">
+      <div class="text-subtitle1 q-mb-sm">Actor 阶段时间线</div>
+      <q-timeline color="primary" class="q-mb-lg">
+        <q-timeline-entry
+          v-for="s in stages"
+          :key="s.id"
+          :title="s.actor_name"
+          :subtitle="stageSubtitle(s)"
+          :color="stageColor(s.status)"
+          :icon="stageIcon(s.status)"
+        >
+          <div>{{ s.message || '—' }}</div>
+        </q-timeline-entry>
+      </q-timeline>
+    </template>
+    <div v-else-if="job" class="text-grey-6 q-mb-lg">
+      无流水线阶段{{ job.status === 'rejected' ? '（容量门禁拒绝，未创建正式作业）' : '' }}
+    </div>
 
     <div class="text-subtitle1 q-mb-sm">质控指标</div>
     <div class="row q-col-gutter-md" v-if="metrics">
@@ -99,11 +106,18 @@ const statusBannerClass = computed(() => {
   if (s === 'success') return 'bg-positive text-white'
   if (s === 'failed') return 'bg-negative text-white'
   if (s === 'running') return 'bg-info text-dark'
+  if (s === 'rejected') return 'bg-warning text-dark'
   return 'bg-grey-3'
 })
 
 function statusLabel(s) {
-  return { pending: '排队中', running: '运行中', success: '成功', failed: '失败' }[s] || s
+  return {
+    pending: '排队中',
+    running: '运行中',
+    success: '成功',
+    failed: '失败',
+    rejected: '已拒绝',
+  }[s] || s
 }
 
 function stageColor(status) {

@@ -21,9 +21,27 @@ class SampleOut(BaseModel):
     name: str
     description: str
     is_broken: bool
+    content_length: int
+    est_reads: int
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class CapacityConfigOut(BaseModel):
+    max_chars: int
+    max_reads: int
+    record_rejected: bool
+    updated_by: str
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CapacityConfigUpdate(BaseModel):
+    max_chars: int = Field(ge=1)
+    max_reads: int = Field(ge=1)
+    record_rejected: bool = True
 
 
 class JobCreate(BaseModel):

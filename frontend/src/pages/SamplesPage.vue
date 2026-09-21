@@ -62,6 +62,8 @@ const columns = [
   { name: 'id', label: 'ID', field: 'id', align: 'left' },
   { name: 'name', label: '名称', field: 'name', align: 'left' },
   { name: 'description', label: '说明', field: 'description', align: 'left' },
+  { name: 'content_length', label: '字符数', field: 'content_length', align: 'right' },
+  { name: 'est_reads', label: '粗估读段', field: 'est_reads', align: 'right' },
   { name: 'is_broken', label: '状态', field: 'is_broken', align: 'left' },
   { name: 'actions', label: '操作', field: 'actions', align: 'left' },
 ]

@@ -1,11 +1,16 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import authenticate_user, create_access_token, get_current_user, require_bioops
+from app.capacity import REJECTED_SNAPSHOT_PREVIEW_CHARS, check_capacity
 from app.database import SessionLocal, get_db
-from app.models import Job, JobStage, Sample
+from app.models import CapacityConfig, Job, JobStage, Sample
 from app.pipeline.runner import create_job_stages, run_pipeline_sync
 from app.schemas import (
+    CapacityConfigOut,
+    CapacityConfigUpdate,
     HealthOut,
     JobCreate,
     JobListItem,
@@ -18,6 +23,17 @@ from app.schemas import (
 
 
 router = APIRouter(prefix="/api")
+
+
+def get_capacity_config(db: Session) -> CapacityConfig:
+    """Read the single-row capacity config, creating defaults on first use."""
+    cfg = db.get(CapacityConfig, 1)
+    if cfg is None:
+        cfg = CapacityConfig(id=1)
+        db.add(cfg)
+        db.commit()
+        db.refresh(cfg)
+    return cfg
 
 
 def _run_job_background(job_id: int) -> None:
@@ -53,6 +69,28 @@ def list_samples(_user: dict = Depends(get_current_user), db: Session = Depends(
     return db.query(Sample).order_by(Sample.id).all()
 
 
+@router.get("/config/capacity", response_model=CapacityConfigOut)
+def read_capacity_config(_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return get_capacity_config(db)
+
+
+@router.put("/config/capacity", response_model=CapacityConfigOut)
+def update_capacity_config(
+    body: CapacityConfigUpdate,
+    user: dict = Depends(require_bioops),
+    db: Session = Depends(get_db),
+):
+    cfg = get_capacity_config(db)
+    cfg.max_chars = body.max_chars
+    cfg.max_reads = body.max_reads
+    cfg.record_rejected = body.record_rejected
+    cfg.updated_by = user["username"]
+    cfg.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(cfg)
+    return cfg
+
+
 @router.post("/jobs", response_model=JobOut, status_code=status.HTTP_201_CREATED)
 def create_job(
     body: JobCreate,
@@ -66,13 +104,32 @@ def create_job(
     sample = None
 
     if sample_id is not None:
+        # Sample runs are gated on the sample's own content, never on the paste box.
         sample = db.query(Sample).filter(Sample.id == sample_id).first()
         if not sample:
             raise HTTPException(status_code=404, detail="样例不存在")
         fastq_text = sample.fastq_content
         sample_name = sample.name
     elif not fastq_text:
-        raise HTTPException(status_code=400, detail="请提供 sampleId 或 fastqText")
+        raise HTTPException(status_code=400, detail="FASTQ 文本为空或纯空白，请粘贴有效内容或选择样例")
+
+    cfg = get_capacity_config(db)
+    reason = check_capacity(fastq_text, cfg.max_chars, cfg.max_reads)
+    if reason:
+        detail = f"超出容量门禁：{reason}"
+        if cfg.record_rejected:
+            rejected = Job(
+                sample_id=sample.id if sample else None,
+                sample_name=sample_name,
+                status="rejected",
+                created_by=user["username"],
+                error_message=detail,
+                fastq_snapshot=fastq_text[:REJECTED_SNAPSHOT_PREVIEW_CHARS],
+                finished_at=datetime.now(timezone.utc),
+            )
+            db.add(rejected)
+            db.commit()
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=detail)
 
     job = Job(
         sample_id=sample.id if sample else None,

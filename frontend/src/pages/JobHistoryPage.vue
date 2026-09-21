@@ -40,6 +40,15 @@
           <span v-else class="text-grey-6">—</span>
         </q-td>
       </template>
+      <template #body-cell-error_message="props">
+        <q-td :props="props" class="ellipsis" style="max-width: 260px">
+          <span v-if="props.row.error_message" :class="props.row.status === 'rejected' ? 'text-warning' : 'text-negative'">
+            {{ props.row.error_message }}
+            <q-tooltip>{{ props.row.error_message }}</q-tooltip>
+          </span>
+          <span v-else class="text-grey-6">—</span>
+        </q-td>
+      </template>
       <template #body-cell-actions="props">
         <q-td :props="props">
           <q-btn dense flat color="primary" label="详情" :to="`/jobs/${props.row.id}`" />
@@ -66,6 +75,7 @@ const columns = [
   { name: 'status', label: '状态', field: 'status', align: 'left' },
   { name: 'created_by', label: '提交人', field: 'created_by', align: 'left' },
   { name: 'metrics', label: '指标摘要', field: 'metrics', align: 'left' },
+  { name: 'error_message', label: '说明', field: 'error_message', align: 'left' },
   {
     name: 'created_at',
     label: '创建时间',
@@ -77,11 +87,25 @@ const columns = [
 ]
 
 function statusLabel(s) {
-  return { pending: '排队中', running: '运行中', success: '成功', failed: '失败' }[s] || s
+  return {
+    pending: '排队中',
+    running: '运行中',
+    success: '成功',
+    failed: '失败',
+    rejected: '已拒绝',
+  }[s] || s
 }
 
 function statusColor(s) {
-  return { pending: 'grey', running: 'info', success: 'positive', failed: 'negative' }[s] || 'grey'
+  return (
+    {
+      pending: 'grey',
+      running: 'info',
+      success: 'positive',
+      failed: 'negative',
+      rejected: 'warning',
+    }[s] || 'grey'
+  )
 }
 
 async function load() {

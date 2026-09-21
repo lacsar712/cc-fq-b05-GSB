@@ -62,4 +62,14 @@ export async function createJob(body) {
   return data
 }
 
+export async function getCapacityConfig() {
+  const { data } = await api.get('/config/capacity')
+  return data
+}
+
+export async function updateCapacityConfig(body) {
+  const { data } = await api.put('/config/capacity', body)
+  return data
+}
+
 export default api

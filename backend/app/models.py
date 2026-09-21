@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Boolean, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.capacity import DEFAULT_MAX_CHARS, DEFAULT_MAX_READS, estimate_reads
 from app.database import Base
 
 
@@ -15,6 +16,29 @@ class Sample(Base):
     is_broken: Mapped[bool] = mapped_column(Boolean, default=False)
     fastq_content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def content_length(self) -> int:
+        return len(self.fastq_content or "")
+
+    @property
+    def est_reads(self) -> int:
+        return estimate_reads(self.fastq_content or "")
+
+
+class CapacityConfig(Base):
+    """Single-row (id=1) ops-configurable capacity gate, persisted in DB."""
+
+    __tablename__ = "capacity_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    max_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=DEFAULT_MAX_CHARS)
+    max_reads: Mapped[int] = mapped_column(Integer, nullable=False, default=DEFAULT_MAX_READS)
+    record_rejected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    updated_by: Mapped[str] = mapped_column(String(64), nullable=False, default="system")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class Job(Base):
