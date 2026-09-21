@@ -11,25 +11,48 @@
       状态：{{ statusLabel(job.status) }}
       · 样例：{{ job.sample_name }}
       · 提交人：{{ job.created_by }}
-      <div v-if="job.error_message" class="q-mt-sm">失败原因：{{ job.error_message }}</div>
+      <div v-if="job.error_message" class="q-mt-sm">
+        {{ job.status === 'rejected' ? '拒绝原因' : '失败原因' }}：{{ job.error_message }}
+      </div>
     </q-banner>
 
-    <div class="text-subtitle1 q-mb-sm">Actor 阶段时间线</div>
-    <q-timeline color="primary" class="q-mb-lg">
-      <q-timeline-entry
-        v-for="s in stages"
-        :key="s.id"
-        :title="s.actor_name"
-        :subtitle="stageSubtitle(s)"
-        :color="stageColor(s.status)"
-        :icon="stageIcon(s.status)"
-      >
-        <div>{{ s.message || '—' }}</div>
-      </q-timeline-entry>
-    </q-timeline>
+    <q-card
+      v-if="job && job.status === 'rejected'"
+      flat
+      bordered
+      class="q-mb-lg bg-orange-1"
+    >
+      <q-card-section>
+        <div class="text-subtitle2 q-mb-sm">容量门禁拒绝记录（草稿，未进入流水线）</div>
+        <div v-if="rejectInfo" class="text-body2">
+          实际字符数：{{ rejectInfo.char_count ?? '—' }}（上限 {{ rejectInfo.max_chars ?? '—' }}）
+          <br />
+          粗估读段数：{{ rejectInfo.read_estimate ?? '—' }}（上限 {{ rejectInfo.max_reads ?? '—' }}）
+        </div>
+      </q-card-section>
+    </q-card>
+
+    <template v-if="!job || job.status !== 'rejected'">
+      <div class="text-subtitle1 q-mb-sm">Actor 阶段时间线</div>
+      <q-timeline color="primary" class="q-mb-lg">
+        <q-timeline-entry
+          v-for="s in stages"
+          :key="s.id"
+          :title="s.actor_name"
+          :subtitle="stageSubtitle(s)"
+          :color="stageColor(s.status)"
+          :icon="stageIcon(s.status)"
+        >
+          <div>{{ s.message || '—' }}</div>
+        </q-timeline-entry>
+      </q-timeline>
+    </template>
+    <q-banner v-else class="bg-grey-3 q-mb-lg" rounded>
+      该记录为超限拒绝草稿，没有创建任何 Actor 阶段。
+    </q-banner>
 
     <div class="text-subtitle1 q-mb-sm">质控指标</div>
-    <div class="row q-col-gutter-md" v-if="metrics">
+    <div class="row q-col-gutter-md" v-if="metrics && job.status !== 'rejected'">
       <div class="col-12 col-sm-4" v-for="m in metricCards" :key="m.label">
         <q-card flat bordered class="metric-card">
           <q-card-section>
@@ -60,7 +83,12 @@
         </q-card>
       </div>
     </div>
-    <div v-else class="text-grey-6">尚无指标（作业未成功完成或仍在运行）</div>
+    <div
+      v-else-if="job && job.status !== 'rejected'"
+      class="text-grey-6"
+    >
+      尚无指标（作业未成功完成或仍在运行）
+    </div>
   </q-page>
 </template>
 
@@ -78,6 +106,10 @@ const stages = ref([])
 let timer = null
 
 const metrics = computed(() => job.value?.metrics || null)
+
+const rejectInfo = computed(() =>
+  job.value?.status === 'rejected' ? metrics.value : null,
+)
 
 const metricCards = computed(() => {
   const m = metrics.value
@@ -99,11 +131,20 @@ const statusBannerClass = computed(() => {
   if (s === 'success') return 'bg-positive text-white'
   if (s === 'failed') return 'bg-negative text-white'
   if (s === 'running') return 'bg-info text-dark'
+  if (s === 'rejected') return 'bg-deep-orange text-white'
   return 'bg-grey-3'
 })
 
 function statusLabel(s) {
-  return { pending: '排队中', running: '运行中', success: '成功', failed: '失败' }[s] || s
+  return (
+    {
+      pending: '排队中',
+      running: '运行中',
+      success: '成功',
+      failed: '失败',
+      rejected: '已拒绝',
+    }[s] || s
+  )
 }
 
 function stageColor(status) {

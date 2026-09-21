@@ -3,13 +3,19 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import config_store
 from app.api import router
-from app.database import Base, engine
+from app.database import Base, SessionLocal, engine
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        config_store.ensure_default_limits(db)
+    finally:
+        db.close()
     yield
 
 

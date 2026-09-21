@@ -21,6 +21,8 @@ class SampleOut(BaseModel):
     name: str
     description: str
     is_broken: bool
+    char_count: int
+    read_estimate: int
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -29,8 +31,19 @@ class SampleOut(BaseModel):
 class JobCreate(BaseModel):
     sampleId: int | None = None
     fastqText: str | None = Field(default=None, alias="fastqText")
+    saveRejectedDraft: bool = Field(default=True, alias="saveRejectedDraft")
 
     model_config = {"populate_by_name": True}
+
+
+class LimitsOut(BaseModel):
+    max_chars: int
+    max_reads: int
+
+
+class LimitsUpdate(BaseModel):
+    max_chars: int = Field(gt=0, le=10_000_000)
+    max_reads: int = Field(gt=0, le=1_000_000)
 
 
 class StageOut(BaseModel):

@@ -4,6 +4,29 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Boolean, JSO
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.limits import ContentSize, measure_content
+
+
+# Default capacity gate values (used to seed / self-heal the config row).
+DEFAULT_MAX_CHARS = 200_000
+DEFAULT_MAX_READS = 5_000
+
+
+class SystemConfig(Base):
+    """Singleton-style key/value store for ops-configurable settings."""
+
+    __tablename__ = "system_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    config_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    config_value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+LIMITS_CONFIG_KEY = "capacity_limits"
 
 
 class Sample(Base):
@@ -16,6 +39,18 @@ class Sample(Base):
     fastq_content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    @property
+    def content_size(self) -> ContentSize:
+        return measure_content(self.fastq_content)
+
+    @property
+    def char_count(self) -> int:
+        return self.content_size.char_count
+
+    @property
+    def read_estimate(self) -> int:
+        return self.content_size.read_estimate
+
 
 class Job(Base):
     __tablename__ = "jobs"
@@ -23,7 +58,8 @@ class Job(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     sample_id: Mapped[int | None] = mapped_column(ForeignKey("samples.id"), nullable=True)
     sample_name: Mapped[str] = mapped_column(String(128), default="自定义输入")
-    status: Mapped[str] = mapped_column(String(32), default="pending")  # pending/running/success/failed
+    # pending/running/success/failed/rejected（rejected = 超限草稿，未进入流水线）
+    status: Mapped[str] = mapped_column(String(32), default="pending")
     created_by: Mapped[str] = mapped_column(String(64), nullable=False)
     metrics: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

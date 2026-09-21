@@ -1,8 +1,12 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
+from app import config_store
 from app.auth import authenticate_user, create_access_token, get_current_user, require_bioops
 from app.database import SessionLocal, get_db
+from app.limits import check_limits, measure_content
 from app.models import Job, JobStage, Sample
 from app.pipeline.runner import create_job_stages, run_pipeline_sync
 from app.schemas import (
@@ -10,6 +14,8 @@ from app.schemas import (
     JobCreate,
     JobListItem,
     JobOut,
+    LimitsOut,
+    LimitsUpdate,
     LoginRequest,
     SampleOut,
     StageOut,
@@ -18,6 +24,10 @@ from app.schemas import (
 
 
 router = APIRouter(prefix="/api")
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def _run_job_background(job_id: int) -> None:
@@ -61,7 +71,7 @@ def create_job(
     db: Session = Depends(get_db),
 ):
     sample_id = body.sampleId
-    fastq_text = (body.fastqText or "").strip() if body.fastqText else ""
+    fastq_text = (body.fastqText or "").strip()
     sample_name = "自定义输入"
     sample = None
 
@@ -69,10 +79,52 @@ def create_job(
         sample = db.query(Sample).filter(Sample.id == sample_id).first()
         if not sample:
             raise HTTPException(status_code=404, detail="样例不存在")
-        fastq_text = sample.fastq_content
+        fastq_text = sample.fastq_content.strip()
         sample_name = sample.name
     elif not fastq_text:
-        raise HTTPException(status_code=400, detail="请提供 sampleId 或 fastqText")
+        # 空或纯空白直接拒绝，不留草稿
+        raise HTTPException(status_code=400, detail="请提供 sampleId 或非空的 fastqText")
+
+    if not fastq_text:
+        raise HTTPException(status_code=400, detail="FASTQ 内容为空或纯空白")
+
+    # 容量门禁：浏览器已拦一道，服务端为最终裁决
+    size = measure_content(fastq_text)
+    limits = config_store.get_limits(db)
+    reason = check_limits(size, limits)
+    if reason is not None:
+        if body.saveRejectedDraft:
+            draft = Job(
+                sample_id=sample.id if sample else None,
+                sample_name=sample_name,
+                status="rejected",
+                created_by=user["username"],
+                fastq_snapshot=fastq_text,
+                error_message=reason,
+                metrics={
+                    "char_count": size.char_count,
+                    "read_estimate": size.read_estimate,
+                    "max_chars": limits.max_chars,
+                    "max_reads": limits.max_reads,
+                    "rejected": True,
+                },
+                finished_at=_utcnow(),
+            )
+            db.add(draft)
+            db.commit()
+            db.refresh(draft)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "reason": reason,
+                "char_count": size.char_count,
+                "read_estimate": size.read_estimate,
+                "max_chars": limits.max_chars,
+                "max_reads": limits.max_reads,
+                "draft_saved": bool(body.saveRejectedDraft),
+                "draft_id": draft.id if body.saveRejectedDraft else None,
+            },
+        )
 
     job = Job(
         sample_id=sample.id if sample else None,
@@ -94,6 +146,23 @@ def create_job(
         .first()
     )
     return job
+
+
+@router.get("/config/limits", response_model=LimitsOut)
+def get_limits(_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return LimitsOut(**config_store.get_limits(db).__dict__)
+
+
+@router.put("/config/limits", response_model=LimitsOut)
+def update_limits(
+    body: LimitsUpdate,
+    user: dict = Depends(require_bioops),
+    db: Session = Depends(get_db),
+):
+    limits = config_store.save_limits(
+        db, body.max_chars, body.max_reads, user["username"]
+    )
+    return LimitsOut(**limits.__dict__)
 
 
 @router.get("/jobs", response_model=list[JobListItem])

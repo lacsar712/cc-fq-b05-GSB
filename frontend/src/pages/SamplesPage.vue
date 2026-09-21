@@ -30,6 +30,11 @@
           </q-badge>
         </q-td>
       </template>
+      <template #body-cell-size="props">
+        <q-td :props="props" class="text-caption">
+          {{ props.row.char_count }} 字符 · {{ props.row.read_estimate }} 读段
+        </q-td>
+      </template>
       <template #body-cell-actions="props">
         <q-td :props="props">
           <q-btn
@@ -63,6 +68,7 @@ const columns = [
   { name: 'name', label: '名称', field: 'name', align: 'left' },
   { name: 'description', label: '说明', field: 'description', align: 'left' },
   { name: 'is_broken', label: '状态', field: 'is_broken', align: 'left' },
+  { name: 'size', label: '内容规模', field: 'char_count', align: 'left' },
   { name: 'actions', label: '操作', field: 'actions', align: 'left' },
 ]
 

@@ -22,6 +22,10 @@ api.interceptors.response.use(
       err.message = detail
     } else if (Array.isArray(detail)) {
       err.message = detail.map((d) => d.msg || JSON.stringify(d)).join('; ')
+    } else if (detail && typeof detail === 'object') {
+      // Capacity-gate rejection: { reason, char_count, ... draft_id }
+      err.message = detail.reason || '请求被拒绝'
+      err.rejection = detail
     }
     return Promise.reject(err)
   },
@@ -59,6 +63,16 @@ export async function getJobStages(id) {
 
 export async function createJob(body) {
   const { data } = await api.post('/jobs', body)
+  return data
+}
+
+export async function getLimits() {
+  const { data } = await api.get('/config/limits')
+  return data
+}
+
+export async function updateLimits(body) {
+  const { data } = await api.put('/config/limits', body)
   return data
 }
 

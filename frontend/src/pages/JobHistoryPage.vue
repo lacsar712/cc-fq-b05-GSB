@@ -32,7 +32,10 @@
       </template>
       <template #body-cell-metrics="props">
         <q-td :props="props">
-          <span v-if="props.row.metrics">
+          <span v-if="props.row.status === 'rejected'" class="text-negative text-caption">
+            {{ props.row.error_message || '超限拒绝' }}
+          </span>
+          <span v-else-if="props.row.metrics">
             Q={{ props.row.metrics.mean_quality ?? '—' }}
             · N={{ props.row.metrics.n_rate ?? '—' }}
             · reads={{ props.row.metrics.reads ?? '—' }}
@@ -65,7 +68,7 @@ const columns = [
   { name: 'sample_name', label: '样例', field: 'sample_name', align: 'left' },
   { name: 'status', label: '状态', field: 'status', align: 'left' },
   { name: 'created_by', label: '提交人', field: 'created_by', align: 'left' },
-  { name: 'metrics', label: '指标摘要', field: 'metrics', align: 'left' },
+  { name: 'metrics', label: '指标 / 拒绝原因', field: 'metrics', align: 'left' },
   {
     name: 'created_at',
     label: '创建时间',
@@ -77,11 +80,27 @@ const columns = [
 ]
 
 function statusLabel(s) {
-  return { pending: '排队中', running: '运行中', success: '成功', failed: '失败' }[s] || s
+  return (
+    {
+      pending: '排队中',
+      running: '运行中',
+      success: '成功',
+      failed: '失败',
+      rejected: '已拒绝',
+    }[s] || s
+  )
 }
 
 function statusColor(s) {
-  return { pending: 'grey', running: 'info', success: 'positive', failed: 'negative' }[s] || 'grey'
+  return (
+    {
+      pending: 'grey',
+      running: 'info',
+      success: 'positive',
+      failed: 'negative',
+      rejected: 'deep-orange',
+    }[s] || 'grey'
+  )
 }
 
 async function load() {
